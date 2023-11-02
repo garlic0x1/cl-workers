@@ -40,7 +40,7 @@
     :documentation "Behavior")
    (messages
     :initform '()
-    :accessor messages
+    :accessor worker-messages
     :documentation "Message stream sent to worker")
    ;; might need later
    (closed?

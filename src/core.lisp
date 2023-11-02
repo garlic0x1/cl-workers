@@ -7,7 +7,9 @@
            #:destroy-worker
            #:close-worker
            #:join-worker
-           #:join-workers))
+           #:join-workers
+           #:close-and-join-workers
+           #:worker-messages))
 (in-package :cl-workers)
 
 ;; ----------------------------------------------------------------------------
@@ -23,9 +25,9 @@
     (condition-notify cv)))
 
 ;; ----------------------------------------------------------------------------
-(defmethod send ((self worker) msg)
+(defmethod send ((self worker) &rest args)
   "Send a value to the worker"
-  (send* self (make-instance 'task-signal :message msg)))
+  (send* self (make-instance 'task-signal :message args)))
 
 ;; ----------------------------------------------------------------------------
 (defmethod destroy-worker ((self worker))
@@ -46,7 +48,7 @@
     (loop (thread-yield)
           (with-lock-held (lock)
             (match (pop messages)
-              ((task-signal :message msg) (funcall behavior msg))
+              ((task-signal :message msg) (apply behavior msg))
               ((close-signal) (return))
               ((null) (condition-wait cv lock)))))))
 
@@ -68,6 +70,12 @@
 ;; ----------------------------------------------------------------------------
 (defmethod join-worker ((self worker))
   (bt:join-thread (cl-workers/types::worker-thread self)))
+
+;; ----------------------------------------------------------------------------
+(defmethod close-and-join-workers (&rest workers)
+  (loop :for w :in workers
+        :do (progn (close-worker w)
+                   (join-worker w))))
 
 ;; ----------------------------------------------------------------------------
 (defun join-workers (&rest workers)
