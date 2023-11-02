@@ -9,8 +9,13 @@
            #:join-worker
            #:join-workers
            #:close-and-join-workers
-           #:worker-messages))
+           #:worker-messages
+           #:spawn-worker
+           #:*named-workers*))
 (in-package :cl-workers)
+
+;; ----------------------------------------------------------------------------
+(defvar *named-workers* (make-hash-table))
 
 ;; ----------------------------------------------------------------------------
 (defmethod initialize-instance :after ((self worker) &key)
@@ -25,9 +30,18 @@
     (condition-notify cv)))
 
 ;; ----------------------------------------------------------------------------
-(defmethod send ((self worker) &rest args)
+(defmethod send* ((self symbol) msg)
+  (send* (gethash self *named-workers*) msg))
+
+;; ----------------------------------------------------------------------------
+(defun send (worker &rest args)
   "Send a value to the worker"
-  (send* self (make-instance 'task-signal :message args)))
+  (send* worker (make-instance 'task-signal :message args)))
+
+;; ----------------------------------------------------------------------------
+(defmethod close-worker (worker)
+  "Close the worker"
+  (send* worker (make-instance 'close-signal)))
 
 ;; ----------------------------------------------------------------------------
 (defmethod destroy-worker ((self worker))
@@ -35,9 +49,15 @@
   (destroy-thread (worker-thread self)))
 
 ;; ----------------------------------------------------------------------------
-(defmethod close-worker ((self worker))
-  "Close the worker"
-  (send* self (make-instance 'close-signal)))
+(defmethod join-worker ((self worker))
+  (bt:join-thread (cl-workers/types::worker-thread self)))
+
+;; ----------------------------------------------------------------------------
+(defmethod close-and-join-workers (&rest workers)
+  (loop :for w :in workers
+        :do (when (symbolp w) (setf w (gethash w *named-workers*)))
+        :do (close-worker w)
+        :do (join-worker w)))
 
 ;; ----------------------------------------------------------------------------
 ;; The main which is started as a thread from the constructor I think that this
@@ -56,9 +76,20 @@
 ;; Macro for creating workers with the behavior specified by body
 (defmacro defworker (name state vars &body body)
   `(defun ,name (&key (self) ,@state)
-     (labels ((me ,(append vars ;; `(&key (next #'me next-supplied-p))
-                    ) ,@body))
-       (setf self (make-worker #'me ,(string name))) self)))
+     (labels ((me ,vars ,@body))
+       (setf self (make-worker #'me ,(string name)))
+       self)))
+
+;; ----------------------------------------------------------------------------
+;; Macro for spawning global singleton workers with the behavior specified by body
+(defmacro spawn-worker (name state vars &body body)
+  `(setf (gethash ,name *named-workers*)
+         (let ,state
+           (labels ((me ,vars ,@body))
+             (setf self (make-worker #'me ,(string name)))
+             self))))
+
+;; (spawn-worker *mailer* () (msg) (print msg))
 
 ;; ----------------------------------------------------------------------------
 ;; The shell of a worker
@@ -66,20 +97,6 @@
   (make-instance 'worker
                  :name (concatenate 'string "Worker: " name)
                  :behavior behav))
-
-;; ----------------------------------------------------------------------------
-(defmethod join-worker ((self worker))
-  (bt:join-thread (cl-workers/types::worker-thread self)))
-
-;; ----------------------------------------------------------------------------
-(defmethod close-and-join-workers (&rest workers)
-  (loop :for w :in workers
-        :do (progn (close-worker w)
-                   (join-worker w))))
-
-;; ----------------------------------------------------------------------------
-(defun join-workers (&rest workers)
-  (mapcar #'join-worker workers))
 
 ;; ----------------------------------------------------------------------------
 ;; Currying.
