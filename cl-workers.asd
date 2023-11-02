@@ -3,5 +3,8 @@
   :version "0.1"
   :author "garlic0x1"
   :license "MIT"
-  :depends-on (:bordeaux-threads :trivia)
-  :components ((:file "workers")))
+  :depends-on (:bordeaux-threads :trivia :cl-annot)
+  :components ((:module "src"
+                :components
+                ((:file "types")
+                 (:file "core" :depends-on ("types"))))))
