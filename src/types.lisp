@@ -32,6 +32,7 @@
    (behav  :initarg :behav
            :initform (error ":behav must be specified")
            :accessor worker-behav)
+   ;; (store  :initarg)
    (queue  :initform (queues:make-queue :simple-cqueue)
            :accessor worker-queue)
    (lock   :initform (bt:make-lock)

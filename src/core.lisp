@@ -60,9 +60,7 @@
 
 ;; ----------------------------------------------------------------------------
 (defmethod start ((obj worker))
-  (let ((lock (worker-lock obj))
-        (cv (worker-cv obj))
-        (behav (worker-behav obj)))
+  (let ((lock (worker-lock obj)) (cv (worker-cv obj)) (behav (worker-behav obj)))
     (loop (bt:thread-yield)
           (match (queues:qpop (worker-queue obj))
             ((task-signal :message msg) (apply behav msg))

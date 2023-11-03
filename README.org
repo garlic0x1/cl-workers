@@ -38,7 +38,7 @@ It uses a thread-safe queue as a mailbox and actors run on bordeaux-threads.
 #+end_src
 * Functional differences between cl-workers and cl-actors
 ** No need to return the next behavior
-This annoyed me as I generally will just return the current behavior, if you need something like this, you can just keep a lambda in the worker state.
+This annoyed me as I generally will just return the current behavior, if you need something like this, you can just keep a lambda in the worker state or mutate the worker's behav slot.
 ** Closing mailboxes
 This works similarly to Golang channels, when a worker recieves a close-signal, it stops working and the thread finishes.  This allows other threads to wait for workers.
 ** Global workers
