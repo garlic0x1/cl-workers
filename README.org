@@ -38,6 +38,10 @@ It uses a thread-safe queue as a mailbox and actors run on bordeaux-threads.
     (join-worker w)
     res))
 #+end_src
+
+#+RESULTS:
+: 24
+
 ** cl-actors style definition
 #+begin_src lisp
 (defworker nagger () ()
