@@ -1,5 +1,5 @@
 (asdf:defsystem "cl-workers"
-  :description "High level actor framework for Common Lisp"
+  :description "Actor library for Common Lisp"
   :version "0.1"
   :author "garlic0x1"
   :license "MIT"

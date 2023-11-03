@@ -76,15 +76,16 @@
     worker))
 
 ;; ----------------------------------------------------------------------------
+(defmacro with-behavior (name state vars &body body)
+  `(let ,(cons '(self nil) state)
+     (labels ((me ,vars ,@body))
+       (setf self (make-worker ,(string name) #'me)))))
+
+;; ----------------------------------------------------------------------------
 (defmacro defworker (name state vars &body body)
-  `(defun ,name ()
-     (let ,(cons '(self nil) state)
-       (labels ((me (state ,@vars) ,@body))
-         (setf self (make-worker ,(string name) (curry #'me self)))))))
+  `(defun ,name () (with-behavior ,name ,state ,vars ,@body)))
 
 ;; ----------------------------------------------------------------------------
 (defmacro defworker/global (name state vars &body body)
   `(setf (gethash ,name *global-workers*)
-         (let ,(cons '(self nil) state)
-           (labels ((me ,vars ,@body))
-             (setf self (make-worker ,(string name) #'me))))))
+         (with-behavior ,name ,state ,vars ,@body)))
