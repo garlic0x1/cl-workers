@@ -1,105 +1,90 @@
 (defpackage :cl-workers
-  (:use :cl :bordeaux-threads :cl-workers/types)
+  (:use :cl :cl-workers/types)
   (:import-from #:trivia :match)
-  (:export #:defworker
-           #:self
+  (:import-from #:alexandria :curry)
+  (:export #:*global-workers*
            #:send
-           #:destroy-worker
+           #:self
            #:close-worker
            #:join-worker
-           #:join-workers
+           #:destroy-worker
            #:close-and-join-workers
-           #:worker-messages
-           #:spawn-worker
-           #:*named-workers*))
+           #:defworker
+           #:defworker/global
+
+           ;; re-export class methods
+           #:worker
+           #:worker-name
+           #:worker-behav
+           #:worker-queue
+           #:worker-lock
+           #:worker-cv
+           #:worker-thread))
 (in-package :cl-workers)
 
 ;; ----------------------------------------------------------------------------
-(defvar *named-workers* (make-hash-table))
+(defvar *global-workers* (make-hash-table))
 
 ;; ----------------------------------------------------------------------------
-(defmethod initialize-instance :after ((self worker) &key)
-  "Uses the main functiona name to create a thread"
-  (setf (worker-thread self)
-        (bt:make-thread #'(lambda () (main self)) :name (worker-name self))))
+(defmethod send-signal ((obj worker) (msg worker-signal))
+  (queues:qpush (worker-queue obj) msg)
+  (bt:condition-notify (worker-cv obj)))
 
 ;; ----------------------------------------------------------------------------
-(defmethod send* ((self worker) msg)
-  (with-slots (messages (lock worker-lock) (cv worker-cv)) self
-    (with-lock-held (lock) (setf messages (nconc messages (list msg))))
-    (condition-notify cv)))
+(defgeneric send (obj &rest args)
+  (:method ((obj worker) &rest args)
+    (send-signal obj (make-instance 'task-signal :message args)))
+  (:method ((obj symbol) &rest args)
+    (send-signal (gethash obj *global-workers*)
+                 (make-instance 'task-signal :message args))))
 
 ;; ----------------------------------------------------------------------------
-(defmethod send* ((self symbol) msg)
-  (send* (gethash self *named-workers*) msg))
+(defgeneric close-worker (obj)
+  (:method ((obj worker)) (send-signal obj (make-instance 'close-signal)))
+  (:method ((obj symbol)) (close-worker (gethash obj *global-workers*))))
 
 ;; ----------------------------------------------------------------------------
-(defun send (worker &rest args)
-  "Send a value to the worker"
-  (send* worker (make-instance 'task-signal :message args)))
+(defgeneric join-worker (obj)
+  (:method ((obj worker)) (bt:join-thread (worker-thread obj)))
+  (:method ((obj symbol)) (join-worker (gethash obj *global-workers*))))
 
 ;; ----------------------------------------------------------------------------
-(defmethod close-worker (worker)
-  "Close the worker"
-  (send* worker (make-instance 'close-signal)))
+(defgeneric destroy-worker (obj)
+  (:method ((obj worker)) (bt:destroy-thread (worker-thread obj)))
+  (:method ((obj symbol)) (destroy-worker (gethash obj *global-workers*))))
 
 ;; ----------------------------------------------------------------------------
-(defmethod destroy-worker ((self worker))
-  "Stops the worker thread immediately"
-  (destroy-thread (worker-thread self)))
+(defun close-and-join-workers (&rest workers)
+  (mapcar #'close-worker workers)
+  (mapcar #'join-worker workers))
 
 ;; ----------------------------------------------------------------------------
-(defmethod join-worker ((self worker))
-  (bt:join-thread (cl-workers/types::worker-thread self)))
+(defmethod start ((obj worker))
+  (let ((lock (worker-lock obj))
+        (cv (worker-cv obj))
+        (behav (worker-behav obj)))
+    (loop (bt:thread-yield)
+          (match (queues:qpop (worker-queue obj))
+            ((task-signal :message msg) (apply behav msg))
+            ((close-signal) (return))
+            ((null) (bt:with-lock-held (lock) (bt:condition-wait cv lock)))))))
 
 ;; ----------------------------------------------------------------------------
-(defmethod close-and-join-workers (&rest workers)
-  (loop :for w :in workers
-        :do (when (symbolp w) (setf w (gethash w *named-workers*)))
-        :do (close-worker w)
-        :do (join-worker w)))
+(defun make-worker (name behav)
+  (let ((worker (make-instance 'worker :name name :behav behav)))
+    (setf (worker-thread worker) (bt:make-thread (lambda () (start worker)) :name name))
+    worker))
 
 ;; ----------------------------------------------------------------------------
-;; The main which is started as a thread from the constructor I think that this
-;; should be more of an internal function than a method (experiment with
-;; funcallable-standard-class)
-(defmethod main((self worker))
-  (with-slots ((lock worker-lock) (cv worker-cv) behavior messages) self
-    (loop (thread-yield)
-          (with-lock-held (lock)
-            (match (pop messages)
-              ((task-signal :message msg) (apply behavior msg))
-              ((close-signal) (return))
-              ((null) (condition-wait cv lock)))))))
-
-;; ----------------------------------------------------------------------------
-;; Macro for creating workers with the behavior specified by body
 (defmacro defworker (name state vars &body body)
-  `(defun ,name (&key (self) ,@state)
-     (labels ((me ,vars ,@body))
-       (setf self (make-worker #'me ,(string name)))
-       self)))
+  `(defun ,name ()
+     (let ,(cons '(self nil) state)
+       (labels ((me (state ,@vars) ,@body))
+         (setf self (make-worker ,(string name) (curry #'me self)))))))
 
 ;; ----------------------------------------------------------------------------
-;; Macro for spawning global singleton workers with the behavior specified by body
-(defmacro spawn-worker (name state vars &body body)
-  `(setf (gethash ,name *named-workers*)
-         (let ,state
+(defmacro defworker/global (name state vars &body body)
+  `(setf (gethash ,name *global-workers*)
+         (let ,(cons '(self nil) state)
            (labels ((me ,vars ,@body))
-             (setf self (make-worker #'me ,(string name)))
-             self))))
-
-;; (spawn-worker *mailer* () (msg) (print msg))
-
-;; ----------------------------------------------------------------------------
-;; The shell of a worker
-(defun make-worker (behav name)
-  (make-instance 'worker
-                 :name (concatenate 'string "Worker: " name)
-                 :behavior behav))
-
-;; ----------------------------------------------------------------------------
-;; Currying.
-(defun curry (f &rest args)
-  (lambda (&rest rem)
-    (apply f (append rem args) )))
+             (setf self (make-worker ,(string name) #'me))))))

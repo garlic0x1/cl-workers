@@ -1,60 +1,41 @@
 (defpackage :cl-workers/types
-  (:use :cl :cl-annot.class)
-  (:export #:close-signal
+  (:use :cl)
+  (:export #:worker-signal
+           #:close-signal
            #:task-signal
-           #:worker))
+           #:signal-message
+           #:worker
+           #:worker-name
+           #:worker-behav
+           #:worker-queue
+           #:worker-lock
+           #:worker-cv
+           #:worker-thread))
 (in-package :cl-workers/types)
-(annot:enable-annot-syntax)
 
 ;; ----------------------------------------------------------------------------
-@export-slots
-(defclass close-signal ()
-  ((now?
-    :initarg :now?
-    :initform t
-    :accessor now?
-    :documentation "Do not process any more messages")))
+(defclass worker-signal () ())
 
 ;; ----------------------------------------------------------------------------
-@export-accessors
-(defclass task-signal ()
-  ((message
-    :initarg :message
-    :initform nil
-    :accessor message
-    :documentation "Message to pass to worker")))
+(defclass close-signal (worker-signal) ())
 
 ;; ----------------------------------------------------------------------------
-@export-accessors
-@export-slots
+(defclass task-signal (worker-signal)
+  ((message :initarg :message
+            :accessor signal-message)))
+
+;; ----------------------------------------------------------------------------
 (defclass worker ()
-  ((worker-name
-    :initarg :name
-    :initform (error ":name must be specified")
-    :accessor worker-name
-    :documentation "Hold the name of worker")
-   (behavior
-    :initarg :behavior
-    :initform (error ":behav must be specified")
-    :accessor behavior
-    :documentation "Behavior")
-   (messages
-    :initform '()
-    :accessor worker-messages
-    :documentation "Message stream sent to worker")
-   ;; might need later
-   (closed?
-    :initform nil
-    :accessor closed?
-    :documentation "If closed, end worker")
-   (worker-lock
-    :initform (bt:make-lock)
-    :accessor worker-lock
-    :documentation "The lock is used when adding a message to the message queue")
-   (worker-cv
-    :initarg :cv
-    :initform (bt:make-condition-variable)
-    :accessor worker-cv
-    :documentation "conditional variable used by the thread")
-   (worker-thread
-    :accessor worker-thread)))
+  ((name   :initarg :name
+           :initform (error ":name must be specified")
+           :accessor worker-name)
+   (behav  :initarg :behav
+           :initform (error ":behav must be specified")
+           :accessor worker-behav)
+   (queue  :initform (queues:make-queue :simple-cqueue)
+           :accessor worker-queue)
+   (lock   :initform (bt:make-lock)
+           :accessor worker-lock)
+   (cv     :initform (bt:make-condition-variable)
+           :accessor worker-cv)
+   (thread :accessor worker-thread)))

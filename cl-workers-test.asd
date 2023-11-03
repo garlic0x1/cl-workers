@@ -1,3 +1,4 @@
 (asdf:defsystem "cl-workers-test"
   :depends-on (:fiveam :cl-workers)
-  :components ((:file "test")))
+  :components ((:module "t"
+                :components ((:file "test")))))

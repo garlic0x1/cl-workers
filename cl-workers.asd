@@ -1,9 +1,12 @@
 (asdf:defsystem "cl-workers"
-  :description "Small additions to cl-actors"
+  :description "High level actor framework for Common Lisp"
   :version "0.1"
   :author "garlic0x1"
   :license "MIT"
-  :depends-on (:bordeaux-threads :trivia :cl-annot)
+  :depends-on (:alexandria
+               :bordeaux-threads
+               :queues.simple-cqueue
+               :trivia)
   :components ((:module "src"
                 :components
                 ((:file "types")

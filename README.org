@@ -1,0 +1,45 @@
+#+title: cl-workers
+
+* Intro
+This is based on [[https://github.com/naveensundarg/Common-Lisp-Actors][cl-actors]], the basic API can be used similarly, but there are some differences and more high level features.
+It uses a thread-safe queue as a mailbox and actors run on bordeaux-threads.
+
+* Examples
+** Create a global stateful worker
+#+begin_src lisp
+;;                name     state   args
+(defworker/global :counter ((i 0)) (increment)
+  (sleep 1)                ; simulate work
+  (setf i (+ i increment)) ; increment state
+  (print i)                ; print new value
+  )
+
+(send :counter 1) ; prints 1 after 1 second
+(send :counter 4) ; prints 5 after 2 seconds
+
+;; a hashmap of the workers is available
+(gethash :counter *global-workers*)
+;;> #<CL-WORKERS/TYPES:WORKER {1002E3E293}>
+
+;; convenience macro to close workers and wait for them to end
+(close-and-join-workers :counter)
+#+end_src
+
+** cl-actors style definition
+#+begin_src lisp
+(defworker nagger () ()
+  (sleep 1)
+  (print "hi")
+  (send self)  ; message itself, infinite loop
+  )
+
+;; anonymous actor , no way to stop the nagging
+(send (nagger))
+#+end_src
+* Functional differences between cl-workers and cl-actors
+** No need to return the next behavior
+This annoyed me as I generally will just return the current behavior, if you need something like this, you can just keep a lambda in the worker state.
+** Closing mailboxes
+This works similarly to Golang channels, when a worker recieves a close-signal, it stops working and the thread finishes.  This allows other threads to wait for workers.
+** Global workers
+defworker/global constructs a global singleton worker that can be accessed by its keyword name, this is handy for defining rate limiters and other jobs that should only have one worker
