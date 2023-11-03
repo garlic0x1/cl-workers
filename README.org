@@ -25,6 +25,22 @@ It uses a thread-safe queue as a mailbox and actors run on bordeaux-threads.
 (close-and-join-workers :counter)
 #+end_src
 
+** Factorial
+#+beginnil ()isp :exports both
+(let ((res))
+  (defworker fac () (x ag)
+    (setf res ag)
+    (if (= x 0)
+        (close-worker self)
+        (send self (- x 1) (* x ag))))
+  (let ((w (fac)))
+    (send w 4 1)
+    (join-worker w)
+    res))
+#+end_src
+
+#+RESULTS:
+: 24
 ** cl-actors style definition
 #+begin_src lisp
 (defworker nagger () ()
@@ -36,6 +52,8 @@ It uses a thread-safe queue as a mailbox and actors run on bordeaux-threads.
 ;; anonymous actor , no way to stop the nagging
 (send (nagger))
 #+end_src
+** &rest
+Refer to [[https://github.com/garlic0x1/cl-workers/blob/master/t/cl-workers-test.lisp][t/cl-workers-test.lisp]] for more examples
 * Functional differences between cl-workers and cl-actors
 ** No need to return the next behavior
 This annoyed me as I generally will just return the current behavior, if you need something like this, you can just keep a lambda in the worker state or mutate the worker's behav slot.
