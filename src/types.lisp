@@ -4,13 +4,20 @@
            #:close-signal
            #:task-signal
            #:signal-message
+
            #:worker
            #:worker-name
            #:worker-behav
            #:worker-queue
            #:worker-lock
            #:worker-cv
-           #:worker-thread))
+           #:worker-thread
+
+           #:worker-superv
+           #:worker-store
+
+           #:supervisor
+           #:supervisor-strategy))
 (in-package :cl-workers/types)
 
 ;; ----------------------------------------------------------------------------
@@ -32,11 +39,24 @@
    (behav  :initarg :behav
            :initform (error ":behav must be specified")
            :accessor worker-behav)
-   ;; (store  :initarg)
    (queue  :initform (queues:make-queue :simple-cqueue)
            :accessor worker-queue)
+
+   ;; trying these slots out, might not keep
+   (store  :initarg store
+           :initform nil
+           :accessor worker-store)
+   (superv :initarg :superv
+           :initform nil
+           :accessor worker-superv)
    (lock   :initform (bt:make-lock)
            :accessor worker-lock)
    (cv     :initform (bt:make-condition-variable)
            :accessor worker-cv)
    (thread :accessor worker-thread)))
+
+;; ----------------------------------------------------------------------------
+(defclass supervisor (worker)
+  ((strategy :initarg :strategy
+             :initform :one-for-one
+             :accessor supervisor-strategy)))

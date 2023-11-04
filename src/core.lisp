@@ -19,7 +19,8 @@
            #:worker-queue
            #:worker-lock
            #:worker-cv
-           #:worker-thread))
+           #:worker-thread
+           #:worker-store))
 (in-package :cl-workers)
 
 ;; ----------------------------------------------------------------------------
@@ -45,8 +46,11 @@
 
 ;; ----------------------------------------------------------------------------
 (defgeneric join-worker (obj)
-  (:method ((obj worker)) (bt:join-thread (worker-thread obj)))
-  (:method ((obj symbol)) (join-worker (gethash obj *global-workers*))))
+  (:method ((obj worker))
+    (bt:join-thread (worker-thread obj))
+    (worker-store obj))
+  (:method ((obj symbol))
+    (join-worker (gethash obj *global-workers*))))
 
 ;; ----------------------------------------------------------------------------
 (defgeneric destroy-worker (obj)
@@ -59,18 +63,20 @@
   (mapcar #'join-worker workers))
 
 ;; ----------------------------------------------------------------------------
-(defmethod start ((obj worker))
-  (let ((lock (worker-lock obj)) (cv (worker-cv obj)) (behav (worker-behav obj)))
+(defmethod start-worker ((obj worker))
+  (let ((lock (worker-lock obj))
+        (cv (worker-cv obj))
+        (behav (worker-behav obj)))
     (loop (bt:thread-yield)
           (match (queues:qpop (worker-queue obj))
-            ((task-signal :message msg) (apply behav msg))
-            ((close-signal) (return))
+            ((task-signal :message msg) (setf (worker-store obj) (apply behav msg)))
+            ((close-signal) (return (worker-store obj)))
             ((null) (bt:with-lock-held (lock) (bt:condition-wait cv lock)))))))
 
 ;; ----------------------------------------------------------------------------
 (defun make-worker (name behav)
   (let ((worker (make-instance 'worker :name name :behav behav)))
-    (setf (worker-thread worker) (bt:make-thread (lambda () (start worker)) :name name))
+    (setf (worker-thread worker) (bt:make-thread (lambda () (start-worker worker)) :name name))
     worker))
 
 ;; ----------------------------------------------------------------------------
@@ -87,3 +93,10 @@
 (defmacro defworker/global (name state vars &body body)
   `(setf (gethash ,name *global-workers*)
          (with-behavior ,name ,state ,vars ,@body)))
+
+;; ----------------------------------------------------------------------------
+;; (defmacro defworker (name state vars &body body)
+;;   (let ((behav `(with-behavior ,name ,state ,vars ,@body)))
+;;     (if (keywordp name)
+;;         `(setf (gethash ,name *global-workers*) ,behav)
+;;         `(defun ,name () behav))))

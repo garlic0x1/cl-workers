@@ -26,23 +26,21 @@ It uses a thread-safe queue as a mailbox and actors run on bordeaux-threads.
 #+end_src
 
 ** Factorial
+Joining a worker returns the value its body last returned, so we can get the result of a computation like this:
 #+begin_src lisp :exports both
-(let ((res))
-  (defworker fac () (x ag)
-    (setf res ag)
-    (if (= x 0)
-        (close-worker self)
-        (send self (- x 1) (* x ag))))
-  (let ((w (fac)))
-    (send w 4 1)
-    (join-worker w)
-    res))
+(defworker/global :fac () (x ag)
+  (if (= x 0)
+      (progn (close-worker self) ag) ; store the result
+      (send self (- x 1) (* x ag))))
+(send :fac 4 1)
+(join-worker :fac)
 #+end_src
 
 #+RESULTS:
 : 24
 
 ** cl-actors style definition
+defworker binds ,name to a function that creates the specified workers
 #+begin_src lisp
 (defworker nagger () ()
   (sleep 1)
@@ -62,3 +60,12 @@ This annoyed me as I generally will just return the current behavior, if you nee
 This works similarly to Golang channels, when a worker recieves a close-signal, it stops working and the thread finishes.  This allows other threads to wait for workers.
 ** Global workers
 defworker/global constructs a global singleton worker that can be accessed by its keyword name, this is handy for defining rate limiters and other jobs that should only have one worker
+
+* Improvement ideas
+** Naming
+defworker and defworker/global could be one macro handling worker and keyword differently, but I think having them separate might be more clear for users.
+
+** Supervisors
+I will hopefully add this after experiementing with it independent of this library.
+
+It might be necessary to allow spawning a worker instance to give it some kind of unique ID for the supervisor to recognize it.
