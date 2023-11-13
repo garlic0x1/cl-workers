@@ -6,7 +6,8 @@
   :depends-on (:alexandria
                :bordeaux-threads
                :queues.simple-cqueue
-               :trivia)
+               :trivia
+               :cl-annot)
   :components ((:module "src"
                 :components
                 ((:file "types")

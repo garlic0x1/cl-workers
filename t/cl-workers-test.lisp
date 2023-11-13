@@ -7,7 +7,7 @@
 (in-suite :cl-workers)
 
 ;; ----------------------------------------------------------------------------
-(test :counter
+(test :counter-lexical
   (let ((result))
     (defworker/global :counter ((i 0)) (increment)
       (incf i increment)
@@ -20,39 +20,7 @@
     (is (= 10 result))))
 
 ;; ----------------------------------------------------------------------------
-(test :recursion
-  (let ((result))
-    (defworker fac () (x ag)
-      (setf result ag)
-      (if (= x 0)
-          (close-worker self)
-          (send self (- x 1) (* x ag))))
-    (let ((w (fac)))
-      (send w 4 1)
-      (join-worker w)
-      (is (= 24 result)))))
-
-;; ----------------------------------------------------------------------------
-(test :waiting
-  (let ((result))
-    (defworker/global :sleepy () () (sleep 1) (setf result :done))
-    (send :sleepy)
-    (close-worker :sleepy)
-    (join-worker :sleepy)
-    (is (eql result :done))))
-
-;; ----------------------------------------------------------------------------
-(test :ordered
-  (let ((result))
-    (defworker/global :in-order () (x) (setf result (cons x result)))
-    (send :in-order 1)
-    (send :in-order 2)
-    (send :in-order 3)
-    (close-and-join-workers :in-order)
-    (is (equal result '(3 2 1)))))
-
-;; ----------------------------------------------------------------------------
-(test :store
+(test :counter
   (defworker/global :counter ((i 0)) (x)
     (incf i x))
   (send :counter 2)
@@ -61,10 +29,46 @@
   (is (= 5 (join-worker :counter))))
 
 ;; ----------------------------------------------------------------------------
-(test :recursion-with-store
+(test :recursion-lexical
+  (let ((result))
+    (defworker fac () (x ag)
+      (if (= x 0)
+          (progn (setf result ag) (close-worker self))
+          (send self (- x 1) (* x ag))))
+    (let ((w (fac)))
+      (send w 4 1)
+      (join-worker w)
+      (is (= 24 result)))))
+
+;; ----------------------------------------------------------------------------
+(test :recursion
   (defworker/global :fac () (x ag)
     (if (= x 0)
         (progn (close-worker self) ag)
         (send self (- x 1) (* x ag))))
   (send :fac 4 1)
   (is (= 24 (join-worker :fac))))
+
+;; ----------------------------------------------------------------------------
+(test :waiting
+
+  ;; create singleton worker
+  (defworker/global :sleepy () (msg)
+    (sleep 1)
+    (print msg)
+    :done)
+  (send :sleepy "print me")              ; send task signal
+  (close-worker :sleepy)                 ; send close signal
+  (is (eql :done (join-worker :sleepy))) ; check result
+
+  )
+
+;; ----------------------------------------------------------------------------
+(test :ordered-with-store
+  (defworker in-order ((ag)) (x) (setf ag (cons x ag)))
+  (let ((w (in-order)))
+    (send w 1)
+    (send w 2)
+    (send w 3)
+    (close-worker w)
+    (is (equal (join-worker w) '(3 2 1)))))

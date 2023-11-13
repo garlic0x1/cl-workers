@@ -20,6 +20,7 @@
            #:worker-lock
            #:worker-cv
            #:worker-thread
+           #:worker-open?
            #:worker-store))
 (in-package :cl-workers)
 
@@ -28,11 +29,16 @@
 
 ;; ----------------------------------------------------------------------------
 (defmethod send-signal ((obj worker) (msg worker-signal))
+  "Send a signal type to an actor and notify it"
+  (unless (worker-open? obj)
+    (warn (format nil "Worker ~w is closed" obj))
+    (return-from send-signal))
   (queues:qpush (worker-queue obj) msg)
   (bt:condition-notify (worker-cv obj)))
 
 ;; ----------------------------------------------------------------------------
 (defgeneric send (obj &rest args)
+  (:documentation "Send a message to an actor")
   (:method ((obj worker) &rest args)
     (send-signal obj (make-instance 'task-signal :message args)))
   (:method ((obj symbol) &rest args)
@@ -41,11 +47,15 @@
 
 ;; ----------------------------------------------------------------------------
 (defgeneric close-worker (obj)
-  (:method ((obj worker)) (send-signal obj (make-instance 'close-signal)))
+  (:documentation "Send a close-signal to an actor")
+  (:method ((obj worker))
+    (send-signal obj (make-instance 'close-signal))
+    (setf (worker-open? obj) nil))
   (:method ((obj symbol)) (close-worker (gethash obj *global-workers*))))
 
 ;; ----------------------------------------------------------------------------
 (defgeneric join-worker (obj)
+  (:documentation "Wait for an actor to finish working")
   (:method ((obj worker))
     (bt:join-thread (worker-thread obj))
     (worker-store obj))
@@ -54,6 +64,7 @@
 
 ;; ----------------------------------------------------------------------------
 (defgeneric destroy-worker (obj)
+  (:documentation "Immediately destroy an actor's thread")
   (:method ((obj worker)) (bt:destroy-thread (worker-thread obj)))
   (:method ((obj symbol)) (destroy-worker (gethash obj *global-workers*))))
 
@@ -63,18 +74,22 @@
   (mapcar #'join-worker workers))
 
 ;; ----------------------------------------------------------------------------
+(defmethod handle-message ((obj worker) (msg list))
+  "Apply message to actor behavior"
+  (setf (worker-store obj) (apply (worker-behav obj) msg)))
+
+;; ----------------------------------------------------------------------------
 (defmethod start-worker ((obj worker))
-  (let ((lock (worker-lock obj))
-        (cv (worker-cv obj))
-        (behav (worker-behav obj)))
-    (loop (bt:thread-yield)
-          (match (queues:qpop (worker-queue obj))
-            ((task-signal :message msg) (setf (worker-store obj) (apply behav msg)))
-            ((close-signal) (return (worker-store obj)))
-            ((null) (bt:with-lock-held (lock) (bt:condition-wait cv lock)))))))
+  "Main event loop for actors"
+  (loop (bt:thread-yield)
+        (match (queues:qpop (worker-queue obj))
+          ((task-signal :message msg) (handle-message obj msg))
+          ((close-signal) (return (worker-store obj)))
+          ((null) (bt:with-lock-held ((worker-lock obj)) (bt:condition-wait (worker-cv obj) (worker-lock obj)))))))
 
 ;; ----------------------------------------------------------------------------
 (defun make-worker (name behav)
+  "Make instance and start event loop"
   (let ((worker (make-instance 'worker :name name :behav behav)))
     (setf (worker-thread worker) (bt:make-thread (lambda () (start-worker worker)) :name name))
     worker))
@@ -95,6 +110,8 @@
          (with-behavior ,name ,state ,vars ,@body)))
 
 ;; ----------------------------------------------------------------------------
+;; considered automatically differentiating between defworker and defworker/global
+;; probably not as clear to the user though...
 ;; (defmacro defworker (name state vars &body body)
 ;;   (let ((behav `(with-behavior ,name ,state ,vars ,@body)))
 ;;     (if (keywordp name)

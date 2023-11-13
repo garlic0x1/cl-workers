@@ -1,37 +1,30 @@
-(defpackage :cl-workers/types
-  (:use :cl)
-  (:export #:worker-signal
-           #:close-signal
-           #:task-signal
-           #:signal-message
-
-           #:worker
-           #:worker-name
-           #:worker-behav
-           #:worker-queue
-           #:worker-lock
-           #:worker-cv
-           #:worker-thread
-
-           #:worker-superv
-           #:worker-store
-
-           #:supervisor
-           #:supervisor-strategy))
+(uiop:define-package :cl-workers/types
+  (:use :cl :cl-annot.class))
 (in-package :cl-workers/types)
+(cl-annot:enable-annot-syntax)
 
 ;; ----------------------------------------------------------------------------
+@export-class
 (defclass worker-signal () ())
 
 ;; ----------------------------------------------------------------------------
+@export-class
 (defclass close-signal (worker-signal) ())
 
 ;; ----------------------------------------------------------------------------
+@export-class
 (defclass task-signal (worker-signal)
   ((message :initarg :message
             :accessor signal-message)))
 
 ;; ----------------------------------------------------------------------------
+@export-class
+(defclass error-signal (worker-signal)
+  ((message :initarg :message
+            :accessor signal-message)))
+
+;; ----------------------------------------------------------------------------
+@export-class
 (defclass worker ()
   ((name   :initarg :name
            :initform (error ":name must be specified")
@@ -41,22 +34,13 @@
            :accessor worker-behav)
    (queue  :initform (queues:make-queue :simple-cqueue)
            :accessor worker-queue)
-
-   ;; trying these slots out, might not keep
+   (open?  :initform t 
+           :accessor worker-open?)
    (store  :initarg store
            :initform nil
            :accessor worker-store)
-   (superv :initarg :superv
-           :initform nil
-           :accessor worker-superv)
    (lock   :initform (bt:make-lock)
            :accessor worker-lock)
    (cv     :initform (bt:make-condition-variable)
            :accessor worker-cv)
    (thread :accessor worker-thread)))
-
-;; ----------------------------------------------------------------------------
-(defclass supervisor (worker)
-  ((strategy :initarg :strategy
-             :initform :one-for-one
-             :accessor supervisor-strategy)))
