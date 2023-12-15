@@ -39,8 +39,8 @@
    (store  :initarg store
            :initform nil
            :accessor worker-store)
-   (lock   :initform (bt:make-lock)
+   (lock   :initform (bt2:make-lock)
            :accessor worker-lock)
-   (cv     :initform (bt:make-condition-variable)
+   (cv     :initform (bt2:make-condition-variable)
            :accessor worker-cv)
    (thread :accessor worker-thread)))

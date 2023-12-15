@@ -34,7 +34,7 @@
     (warn (format nil "Worker ~w is closed" obj))
     (return-from send-signal))
   (queues:qpush (worker-queue obj) msg)
-  (bt:condition-notify (worker-cv obj)))
+  (bt2:condition-notify (worker-cv obj)))
 
 ;; ----------------------------------------------------------------------------
 (defgeneric send (obj &rest args)
@@ -57,7 +57,7 @@
 (defgeneric join-worker (obj)
   (:documentation "Wait for an actor to finish working")
   (:method ((obj worker))
-    (bt:join-thread (worker-thread obj))
+    (bt2:join-thread (worker-thread obj))
     (worker-store obj))
   (:method ((obj symbol))
     (join-worker (gethash obj *global-workers*))))
@@ -65,7 +65,7 @@
 ;; ----------------------------------------------------------------------------
 (defgeneric destroy-worker (obj)
   (:documentation "Immediately destroy an actor's thread")
-  (:method ((obj worker)) (bt:destroy-thread (worker-thread obj)))
+  (:method ((obj worker)) (bt2:destroy-thread (worker-thread obj)))
   (:method ((obj symbol)) (destroy-worker (gethash obj *global-workers*))))
 
 ;; ----------------------------------------------------------------------------
@@ -81,17 +81,17 @@
 ;; ----------------------------------------------------------------------------
 (defmethod start-worker ((obj worker))
   "Main event loop for actors"
-  (loop (bt:thread-yield)
+  (loop (bt2:thread-yield)
         (match (queues:qpop (worker-queue obj))
           ((task-signal :message msg) (handle-message obj msg))
           ((close-signal) (return (worker-store obj)))
-          ((null) (bt:with-lock-held ((worker-lock obj)) (bt:condition-wait (worker-cv obj) (worker-lock obj)))))))
+          ((null) (bt2:with-lock-held ((worker-lock obj)) (bt2:condition-wait (worker-cv obj) (worker-lock obj)))))))
 
 ;; ----------------------------------------------------------------------------
 (defun make-worker (name behav)
   "Make instance and start event loop"
   (let ((worker (make-instance 'worker :name name :behav behav)))
-    (setf (worker-thread worker) (bt:make-thread (lambda () (start-worker worker)) :name name))
+    (setf (worker-thread worker) (bt2:make-thread (lambda () (start-worker worker)) :name name))
     worker))
 
 ;; ----------------------------------------------------------------------------
